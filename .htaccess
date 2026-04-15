@@ -1,0 +1,3 @@
+<FilesMatch "\.(?i:pdf)$">
+  Header set Content-Disposition "inline"
+</FilesMatch>
