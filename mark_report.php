@@ -96,8 +96,7 @@ if ($role !== 'student') {
                 </div>
                 <div>
                     <label>Score (0-100)</label>
-                    <input type="number" name="score" id="input-score" class="fancy-input" step="0.01" required>
-                </div>
+                    <input type="number" name="score" id="input-score" class="fancy-input" min="0" max="100" step="0.01" required>                </div>
                 <div style="grid-column: span 2; display: flex; gap: 10px;">
                     <button type="submit" class="btn-post" id="btn-submit">Post Mark Now</button>
                     <button type="button" onclick="resetMarkForm()" id="btn-cancel" class="btn-post" style="background: #95a5a6; display: none; width: 180px;">Cancel Edit</button>
