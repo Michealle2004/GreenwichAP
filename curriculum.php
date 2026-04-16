@@ -58,8 +58,6 @@ if ($major_id_to_view) {
 pg_close($conn);
 ?>
 
-<title>Curriculum - Greenwich AP</title>
-
 <div class="page-container">
     <h1>Student Curriculum</h1>
     
@@ -116,7 +114,7 @@ pg_close($conn);
                             <?php if ($is_admin): ?>
                                 <td>
                                     <form class="delete-form" action="admin/update_curriculum_process.php" method="POST">
-                                        <input type="hidden" name="action" value="delete">
+                                        <input type="hidden" name="delete_task" value="delete">
                                         <input type="hidden" name="major_id" value="<?php echo htmlspecialchars($major_id_to_view); ?>">
                                         <input type="hidden" name="course_id" value="<?php echo htmlspecialchars($course['course_id']); ?>">
                                         <button type="submit" class="btn-submit" style="background-color: #dc3545; color: white; border: none; padding: 6px 12px; cursor: pointer; border-radius: 4px;">Delete</button>
@@ -140,16 +138,10 @@ document.addEventListener('DOMContentLoaded', function() {
         if(!statusMessage) return;
         statusMessage.textContent = message;
         statusMessage.style.display = 'block';
+        statusMessage.style.backgroundColor = (type === 'success') ? '#d4edda' : '#f8d7da';
+        statusMessage.style.color = (type === 'success') ? '#155724' : '#721c24';
+        statusMessage.style.border = '1px solid ' + ((type === 'success') ? '#c3e6cb' : '#f5c6cb');
         
-        if (type === 'success') {
-            statusMessage.style.backgroundColor = '#d4edda';
-            statusMessage.style.color = '#155724';
-            statusMessage.style.border = '1px solid #c3e6cb';
-        } else {
-            statusMessage.style.backgroundColor = '#f8d7da';
-            statusMessage.style.color = '#721c24';
-            statusMessage.style.border = '1px solid #f5c6cb';
-        }
         window.scrollTo({ top: 0, behavior: 'smooth' });
         setTimeout(() => { statusMessage.style.display = 'none'; }, 4000);
     }
@@ -159,8 +151,10 @@ document.addEventListener('DOMContentLoaded', function() {
             event.preventDefault();
             if (confirm('Are you sure you want to remove this course from the curriculum?')) {
                 const formData = new FormData(this);
+                // Sử dụng this.getAttribute('action') để lấy đúng đường dẫn chuỗi
+                const targetUrl = this.getAttribute('action');
 
-                fetch(this.action, {
+                fetch(targetUrl, {
                     method: 'POST',
                     body: formData
                 })
@@ -182,5 +176,3 @@ document.addEventListener('DOMContentLoaded', function() {
     });
 });
 </script>
-
-<?php require_once 'includes/footer.php'; ?>

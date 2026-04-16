@@ -6,7 +6,8 @@ require_once '../admin_check.php';
 require_once '../includes/db_connect.php';
 
 if ($_SERVER["REQUEST_METHOD"] == "POST") {
-    $action = $_POST['action'] ?? null;
+    // SỬA TẠI ĐÂY: Nhận 'delete_task' thay vì 'action'
+    $action = $_POST['delete_task'] ?? null;
     $major_id = $_POST['major_id'] ?? null;
     $course_id = $_POST['course_id'] ?? null;
 
@@ -20,26 +21,26 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
     if ($action === 'delete') {
         $sql = 'DELETE FROM curriculum WHERE major_id = $1 AND course_id = $2';
         
-        $stmt_name = "delete_cur_item_" . time(); 
+        $stmt_name = "delete_cur_" . time(); 
         $prep = pg_prepare($conn, $stmt_name, $sql);
         
         if ($prep) {
             $result = pg_execute($conn, $stmt_name, array($major_id, $course_id));
 
             if ($result) {
-                echo json_encode(['status' => 'success', 'message' => 'Course removed from curriculum.']);
+                echo json_encode(['status' => 'success', 'message' => 'Course removed.']);
             } else {
-                echo json_encode(['status' => 'error', 'message' => 'Database execution failed: ' . pg_last_error($conn)]);
+                echo json_encode(['status' => 'error', 'message' => 'DB Error: ' . pg_last_error($conn)]);
             }
         } else {
-            echo json_encode(['status' => 'error', 'message' => 'Failed to prepare delete statement.']);
+            echo json_encode(['status' => 'error', 'message' => 'Failed to prepare statement.']);
         }
     } else {
-        echo json_encode(['status' => 'error', 'message' => 'Invalid action requested.']);
+        echo json_encode(['status' => 'error', 'message' => 'Invalid action.']);
     }
 
     pg_close($conn);
 } else {
-    echo json_encode(['status' => 'error', 'message' => 'Invalid request method.']);
+    echo json_encode(['status' => 'error', 'message' => 'Method not allowed.']);
 }
 ?>

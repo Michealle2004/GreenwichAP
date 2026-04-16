@@ -61,7 +61,7 @@ pg_close($conn);
             <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 15px; margin-top: 15px;">
                 <div class="form-group">
                     <label>Role</label>
-                    <select name="role" id="modal-role" required onchange="toggleMajor()">
+                    <select name="role" id="modal-role" required onchange="toggleFormLogic()">
                         <option value="student">Student</option>
                         <option value="teacher">Teacher</option>
                         <option value="admin">Admin</option>
@@ -86,8 +86,19 @@ pg_close($conn);
                 </div>
             </div>
 
+            <div id="parent-option-container" style="margin-top: 20px; padding: 15px; background: #eef2f7; border-radius: 6px; border-left: 5px solid #003366;">
+                <label style="display: flex; align-items: center; cursor: pointer; font-weight: bold; color: #003366;">
+                    <input type="checkbox" name="create_parent" id="create_parent" value="1" style="width: 18px; height: 18px; margin-right: 10px;">
+                    Manage Parent Account for this student
+                </label>
+                <div id="parent-name-group" style="margin-top: 10px; display: none;">
+                    <label style="font-size: 0.9em;">Parent Full Name</label>
+                    <input type="text" name="parent_name" id="modal-parent-name" placeholder="Enter parent's name...">
+                </div>
+            </div>
+
             <div style="display: flex; gap: 10px; margin-top: 20px;">
-                <button type="submit" class="btn-submit" style="background: #28a745; width: auto; margin: 0; padding: 10px 40px;">Save</button>
+                <button type="submit" class="btn-submit" style="background: #28a745; width: auto; margin: 0; padding: 10px 40px;">Save Account</button>
                 <button type="button" onclick="resetForm()" id="cancel-btn" class="btn-submit" style="background: #6c757d; width: auto; margin: 0; padding: 10px 40px; display: none;">Cancel Edit</button>
             </div>
         </form>
@@ -140,15 +151,28 @@ pg_close($conn);
 const userForm = document.getElementById('user-form');
 const formTitle = document.getElementById('form-title');
 const cancelBtn = document.getElementById('cancel-btn');
+const parentCheckbox = document.getElementById('create_parent');
+const parentNameGroup = document.getElementById('parent-name-group');
 
-function toggleMajor() {
+function toggleFormLogic() {
     const role = document.getElementById('modal-role').value;
+    
+    // Major logic
     const majorSelect = document.getElementById('modal-major');
     majorSelect.disabled = (role !== 'student');
     document.getElementById('major-container').style.opacity = (role === 'student') ? '1' : '0.5';
+
+    // Parent logic: Hiện cho cả Add và Edit nếu là Student
+    const parentContainer = document.getElementById('parent-option-container');
+    parentContainer.style.display = (role === 'student') ? 'block' : 'none';
 }
 
+parentCheckbox.addEventListener('change', function() {
+    parentNameGroup.style.display = this.checked ? 'block' : 'none';
+});
+
 function handleEdit(btn) {
+    resetForm();
     formTitle.innerText = 'Edit Account: ' + btn.getAttribute('data-userid');
     document.getElementById('form-action').value = 'edit';
     
@@ -162,7 +186,7 @@ function handleEdit(btn) {
     document.getElementById('pass-note').innerText = '(Blank to keep current)';
     cancelBtn.style.display = 'inline-block';
     
-    toggleMajor();
+    toggleFormLogic();
     document.getElementById('form-anchor').scrollIntoView({ behavior: 'smooth' });
 }
 
@@ -172,11 +196,12 @@ function resetForm() {
     document.getElementById('pass-note').innerText = '';
     userForm.reset();
     cancelBtn.style.display = 'none';
-    toggleMajor();
+    parentNameGroup.style.display = 'none';
+    toggleFormLogic();
 }
 
 function deleteUser(id) {
-    if (confirm('Are you sure you want to delete this account?')) {
+    if (confirm('Are you sure? Delete user and their associated parent account?')) {
         const fd = new FormData();
         fd.append('action', 'delete');
         fd.append('db_id', id);
@@ -190,28 +215,14 @@ function deleteUser(id) {
 
 userForm.onsubmit = function(e) {
     e.preventDefault();
-    const url = this.getAttribute('action');
-    const formData = new FormData(this);
-
-    fetch(url, { method: 'POST', body: formData })
-    .then(res => res.text()) 
-    .then(text => {
-        console.log("Raw Server Response:", text); 
-        try {
-            const data = JSON.parse(text);
-            if(data.status === 'success') {
-                location.reload();
-            } else {
-                alert("Server Error: " + data.message);
-            }
-        } catch(err) {
-            alert("System error. Open Console (F12) to see raw response.");
-        }
+    fetch(this.getAttribute('action'), { method: 'POST', body: new FormData(this) })
+    .then(res => res.json())
+    .then(data => {
+        if(data.status === 'success') location.reload();
+        else alert("Error: " + data.message);
     })
-    .catch(err => alert("Connection lost."));
+    .catch(err => alert("Server error."));
 };
 
-toggleMajor();
+toggleFormLogic();
 </script>
-
-<?php require_once 'includes/footer.php'; ?>
