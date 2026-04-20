@@ -38,8 +38,8 @@ if ($role !== 'student') {
         : "SELECT DISTINCT u.id, u.user_id, u.full_name FROM users u 
            JOIN enrollments e ON u.id = e.student_id 
            JOIN schedules s ON e.schedule_id = s.schedule_id 
-           WHERE s.teacher_id = '$s_code' ORDER BY u.user_id";
-    $res_list = pg_query($conn, $q_list);
+           WHERE s.teacher_id = (SELECT user_id FROM users WHERE id = $1) ORDER BY u.user_id";
+    $res_list = ($role === 'admin') ? pg_query($conn, $q_list) : pg_query_params($conn, $q_list, array($s_id));
     while ($r = pg_fetch_assoc($res_list)) { $student_list[] = $r; }
 }
 ?>
@@ -80,7 +80,7 @@ if ($role !== 'student') {
                     <select id="select-student-mark" class="fancy-input" required>
                         <option value="">-- Choose Student --</option>
                         <?php foreach ($student_list as $s): ?>
-                            <option value="<?= $s['id'] ?>"><?= htmlspecialchars($s['user_id']) ?></option>
+                            <option value="<?= $s['id'] ?>"><?= htmlspecialchars($s['user_id'] . ' - ' . $s['full_name']) ?></option>
                         <?php endforeach; ?>
                     </select>
                 </div>
