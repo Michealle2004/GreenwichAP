@@ -5,46 +5,70 @@ require_once 'includes/db_connect.php';
 $conn = connectToDatabase();
 $deadlines = [];
 $search_query = '';
-$is_admin = isset($_SESSION['role']) && $_SESSION['role'] === 'admin';
-$user_id = $_SESSION['user_id']; 
 
+// Lấy thông tin từ Session
+$role = $_SESSION['role'] ?? '';
+$is_admin = ($role === 'admin');
+$is_teacher = ($role === 'teacher');
+$user_db_id = $_SESSION['user_id']; // ID (số) của người dùng đang đăng nhập
 
 if ($is_admin) {
+    // ---------------------------------------------------------
+    // LOGIC CHO ADMIN (XEM TOÀN BỘ)
+    // ---------------------------------------------------------
     if (isset($_GET['query']) && !empty($_GET['query'])) {
         $search_query = trim($_GET['query']);
-        $sql = 'SELECT d.*, c.course_name, u.user_id, u.full_name
+        $sql = "SELECT d.*, c.course_name, u.user_id, u.full_name
                 FROM exam_deadlines d
                 JOIN courses c ON d.course_id = c.course_id
                 JOIN enrollments e ON c.course_id = (SELECT course_id FROM schedules WHERE schedule_id = e.schedule_id)
                 JOIN users u ON e.student_id = u.id
                 WHERE LOWER(u.user_id) LIKE LOWER($1) OR LOWER(u.full_name) LIKE LOWER($2) OR LOWER(c.course_id) LIKE LOWER($3)
                 GROUP BY d.deadline_id, c.course_name, u.user_id, u.full_name
-                ORDER BY d.deadline_date ASC';
+                ORDER BY d.deadline_date ASC";
         pg_prepare($conn, "admin_search", $sql);
         $result = pg_execute($conn, "admin_search", array("%$search_query%", "%$search_query%", "%$search_query%"));
     } else {
-        $sql = 'SELECT d.*, c.course_name, u.user_id, u.full_name
+        $sql = "SELECT d.*, c.course_name, u.user_id, u.full_name
                 FROM exam_deadlines d
                 JOIN courses c ON d.course_id = c.course_id
                 JOIN enrollments e ON c.course_id = (SELECT course_id FROM schedules WHERE schedule_id = e.schedule_id)
                 JOIN users u ON e.student_id = u.id
                 GROUP BY d.deadline_id, c.course_name, u.user_id, u.full_name
-                ORDER BY d.deadline_date ASC';
+                ORDER BY d.deadline_date ASC";
         pg_prepare($conn, "admin_all", $sql);
         $result = pg_execute($conn, "admin_all", array());
     }
+} elseif ($is_teacher) {
+    // ---------------------------------------------------------
+    // LOGIC CHO TEACHER (XEM MÔN ĐANG DẠY)
+    // ---------------------------------------------------------
+    $sql = "SELECT d.deadline_id, d.course_id, c.course_name, d.title, d.deadline_date, d.details
+            FROM exam_deadlines d
+            JOIN courses c ON d.course_id = c.course_id
+            JOIN schedules s ON c.course_id = s.course_id
+            JOIN users u ON s.teacher_id = u.user_id
+            WHERE u.id = $1
+            GROUP BY d.deadline_id, d.course_id, c.course_name, d.title, d.deadline_date, d.details
+            ORDER BY d.deadline_date ASC";
+    
+    pg_prepare($conn, "teacher_deadline_query", $sql);
+    $result = pg_execute($conn, "teacher_deadline_query", array($user_db_id));
 } else {
-    $sql = "SELECT d.course_id, c.course_name, d.title, d.deadline_date, d.details
+    // ---------------------------------------------------------
+    // LOGIC CHO STUDENT (XEM MÔN ĐANG HỌC)
+    // ---------------------------------------------------------
+    $sql = "SELECT d.deadline_id, d.course_id, c.course_name, d.title, d.deadline_date, d.details
             FROM exam_deadlines d
             JOIN courses c ON d.course_id = c.course_id
             JOIN schedules s ON c.course_id = s.course_id
             JOIN enrollments e ON s.schedule_id = e.schedule_id
             WHERE e.student_id = $1 AND e.status = 'approved'
-            GROUP BY d.deadline_id, c.course_name
+            GROUP BY d.deadline_id, c.course_name, d.title, d.deadline_date, d.details
             ORDER BY d.deadline_date ASC";
 
     pg_prepare($conn, "student_deadline_query", $sql);
-    $result = pg_execute($conn, "student_deadline_query", array($user_id));
+    $result = pg_execute($conn, "student_deadline_query", array($user_db_id));
 }
 
 if ($result) {
@@ -139,7 +163,10 @@ pg_close($conn);
             <tbody>
                 <?php if (empty($deadlines)): ?>
                     <tr>
-                        <td colspan="<?= $is_admin ? '6' : '4'; ?>" style="text-align: center; padding: 20px;">No deadlines found.</td>
+                        <td colspan="<?= $is_admin ? '6' : '4'; ?>" style="text-align: center; padding: 50px;">
+                            No deadlines found. 
+                            <?php if($is_teacher) echo "<br><small>(Make sure you are assigned to courses in schedules table)</small>"; ?>
+                        </td>
                     </tr>
                 <?php else: ?>
                     <?php foreach ($deadlines as $deadline): ?>
@@ -171,7 +198,8 @@ pg_close($conn);
     </div>
 </div>
 
-<script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script> <script>
+<script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script> 
+<script>
 document.addEventListener('DOMContentLoaded', function() {
     const deleteForms = document.querySelectorAll('.ajax-delete-form');
 
@@ -188,29 +216,20 @@ document.addEventListener('DOMContentLoaded', function() {
                 confirmButtonText: 'Yes, delete it!'
             }).then((result) => {
                 if (result.isConfirmed) {
-                    const formData = new FormData(this);
-
                     fetch(this.action, {
                         method: 'POST',
-                        body: formData
+                        body: new FormData(this)
                     })
                     .then(response => response.json())
                     .then(data => {
                         if (data.status === 'success') {
-                            Swal.fire(
-                                'Deleted!',
-                                data.message,
-                                'success'
-                            );
+                            Swal.fire('Deleted!', data.message, 'success');
                             this.closest('tr').remove(); 
                         } else {
                             Swal.fire('Error', data.message, 'error');
                         }
                     })
-                    .catch(error => {
-                        console.error('Error:', error);
-                        Swal.fire('Error', 'Something went wrong!', 'error');
-                    });
+                    .catch(error => Swal.fire('Error', 'Network error!', 'error'));
                 }
             });
         });
