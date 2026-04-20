@@ -14,7 +14,7 @@ if (isset($_SESSION['parent_id'])) {
 </head>
 <body class="login-page">  <div class="login-container">
         <form action="parent_login_process.php" method="POST" class="login-form">
-            <img src="https://ap.greenwich.edu.vn/Logo15.png" alt="Greenwich Logo" class="logo">
+            <img src="https://greenwich.edu.vn/wp-content/uploads/2024/06/2022-Greenwich-Eng.webp" alt="Greenwich Logo" class="logo">
             <h2>Parent Login Portal</h2>
 
             <?php if (isset($_GET['error'])): ?>
