@@ -5,9 +5,14 @@ require_once 'includes/db_connect.php';
 $conn = connectToDatabase();
 $attendance_by_course = [];
 $search_id = '';
-$user_id_to_view = $_SESSION['user_id'];
-$is_admin = isset($_SESSION['role']) && $_SESSION['role'] === 'admin';
+$role = $_SESSION['role'] ?? '';
+$user_db_id = $_SESSION['user_id']; // ID số của user đang đăng nhập
+$is_admin = ($role === 'admin');
+$is_teacher = ($role === 'teacher');
 
+$user_id_to_view = $user_db_id;
+
+// 1. XỬ LÝ QUYỀN ADMIN: Tìm kiếm theo mã sinh viên
 if ($is_admin) {
     if (isset($_GET['student_user_id']) && !empty($_GET['student_user_id'])) {
         $search_id = trim($_GET['student_user_id']);
@@ -22,24 +27,49 @@ if ($is_admin) {
     }
 }
 
-if ($user_id_to_view) {
-    $sql = 'SELECT
-            c.course_name,
-            a.session_date,
-            a.status,
-            a.attendance_id
-        FROM attendance a
-        JOIN enrollments e ON a.enrollment_id = e.enrollment_id
-        JOIN schedules s ON e.schedule_id = s.schedule_id
-        JOIN courses c ON s.course_id = c.course_id
-        WHERE e.student_id = $1
-        ORDER BY c.course_name, a.session_date DESC';
+// 2. TRUY VẤN DỮ LIỆU DỰA TRÊN ROLE
+if ($user_id_to_view || $is_teacher) {
+    if ($is_teacher) {
+        // LOGIC CHO GIÁO VIÊN: Xem điểm danh các lớp mình phụ trách
+        $sql = 'SELECT 
+                c.course_name, 
+                a.session_date, 
+                a.status, 
+                a.attendance_id,
+                u.full_name as student_name,
+                u.user_id as student_code
+            FROM attendance a
+            JOIN enrollments e ON a.enrollment_id = e.enrollment_id
+            JOIN schedules s ON e.schedule_id = s.schedule_id
+            JOIN courses c ON s.course_id = c.course_id
+            JOIN users u ON e.student_id = u.id
+            WHERE s.teacher_id = (SELECT user_id FROM users WHERE id = $1)
+            ORDER BY c.course_name, a.session_date DESC';
+            
+        pg_prepare($conn, "teacher_query", $sql);
+        $result = pg_execute($conn, "teacher_query", array($user_db_id));
+    } else {
+        // LOGIC CHO HỌC SINH HOẶC ADMIN XEM 1 HỌC SINH
+        $sql = 'SELECT
+                c.course_name,
+                a.session_date,
+                a.status,
+                a.attendance_id
+            FROM attendance a
+            JOIN enrollments e ON a.enrollment_id = e.enrollment_id
+            JOIN schedules s ON e.schedule_id = s.schedule_id
+            JOIN courses c ON s.course_id = c.course_id
+            WHERE e.student_id = $1
+            ORDER BY c.course_name, a.session_date DESC';
 
-    pg_prepare($conn, "attendance_query", $sql);
-    $result = pg_execute($conn, "attendance_query", array($user_id_to_view));
+        pg_prepare($conn, "attendance_query", $sql);
+        $result = pg_execute($conn, "attendance_query", array($user_id_to_view));
+    }
 
-    while ($row = pg_fetch_assoc($result)) {
-        $attendance_by_course[$row['course_name']][] = $row;
+    if ($result) {
+        while ($row = pg_fetch_assoc($result)) {
+            $attendance_by_course[$row['course_name']][] = $row;
+        }
     }
 }
 
@@ -53,7 +83,6 @@ pg_close($conn);
     
     <?php if ($is_admin): ?>
         <h2>Admin Tools</h2>
-        <div id="status-message" class="message" style="display: none;"></div>
         <form method="GET" action="attendance_report.php" class="request-form" style="margin-bottom: 30px;">
             <div class="form-group">
                 <label for="student_user_id">Enter Student ID to view attendance</label>
@@ -68,12 +97,17 @@ pg_close($conn);
         <p>No attendance records found.</p>
     <?php else: ?>
         <?php foreach ($attendance_by_course as $course_name => $records): ?>
-            <div class="course-marks-card">
-                <h3><?php echo htmlspecialchars($course_name); ?></h3>
-                <table class="report-table">
+            <div class="course-marks-card" style="margin-bottom: 40px; border: 1px solid #ddd; padding: 15px; border-radius: 8px;">
+                <h3 style="color: #003366; border-bottom: 2px solid #003366; padding-bottom: 5px;">
+                    <?php echo htmlspecialchars($course_name); ?>
+                </h3>
+                <table class="report-table" style="width: 100%; border-collapse: collapse;">
                     <thead>
-                        <tr>
+                        <tr style="background: #f4f4f4;">
                             <th>Session Date</th>
+                            <?php if ($is_teacher): ?>
+                                <th>Student</th>
+                            <?php endif; ?>
                             <th>Status</th>
                             <?php if ($is_admin): ?>
                                 <th>Actions</th>
@@ -82,8 +116,16 @@ pg_close($conn);
                     </thead>
                     <tbody>
                         <?php foreach ($records as $record): ?>
-                            <tr id="attendance-row-<?php echo htmlspecialchars($record['attendance_id']); ?>">
-                                <td><?php echo date('l, F j, Y', strtotime($record['session_date'])); ?></td>
+                            <tr>
+                                <td><?php echo date('l, d-m-Y', strtotime($record['session_date'])); ?></td>
+                                
+                                <?php if ($is_teacher): ?>
+                                    <td>
+                                        <strong><?php echo htmlspecialchars($record['student_code']); ?></strong><br>
+                                        <small><?php echo htmlspecialchars($record['student_name']); ?></small>
+                                    </td>
+                                <?php endif; ?>
+
                                 <td>
                                     <?php if ($is_admin): ?>
                                         <form class="update-attendance-form" action="admin/update_attendance_process.php" method="POST">
@@ -93,12 +135,13 @@ pg_close($conn);
                                                 <option value="absent" <?php echo $record['status'] == 'absent' ? 'selected' : ''; ?>>Absent</option>
                                                 <option value="not_yet" <?php echo $record['status'] == 'not_yet' ? 'selected' : ''; ?>>Not Yet</option>
                                             </select>
-                                            <button type="submit" class="btn-submit" style="padding: 5px 10px; font-size: 0.9em;">Update</button>
+                                            <button type="submit" class="btn-submit" style="padding: 3px 8px;">Update</button>
                                         </form>
                                     <?php else: ?>
                                         <?php
-                                        $status_class = strtolower($record['status']);
-                                        echo '<span class="status-badge status-' . $status_class . '">' . htmlspecialchars($record['status']) . '</span>';
+                                        $status = strtolower($record['status']);
+                                        $color = ($status == 'present') ? '#28a745' : (($status == 'absent') ? '#dc3545' : '#6c757d');
+                                        echo '<span style="color: white; background: '.$color.'; padding: 4px 10px; border-radius: 4px; font-size: 0.85em;">' . ucfirst($record['status']) . '</span>';
                                         ?>
                                     <?php endif; ?>
                                 </td>
@@ -111,56 +154,4 @@ pg_close($conn);
     <?php endif; ?>
 </div>
 
-<?php
-require_once 'includes/footer.php';
-?>
-
-<script>
-document.addEventListener('DOMContentLoaded', function() {
-    const statusMessage = document.getElementById('status-message');
-    const updateAttendanceForms = document.querySelectorAll('.update-attendance-form');
-
-    function showMessage(message, type = 'success') {
-        statusMessage.textContent = message;
-        statusMessage.className = 'message ' + type;
-        statusMessage.style.display = 'block';
-        setTimeout(() => {
-            statusMessage.style.display = 'none';
-        }, 5000);
-    }
-    
-    updateAttendanceForms.forEach(form => {
-        form.addEventListener('submit', function(event) {
-            event.preventDefault();
-            const formData = new FormData(this);
-            const row = this.closest('tr');
-            
-            fetch(this.action, {
-                method: 'POST',
-                body: formData
-            })
-            .then(response => response.json())
-            .then(data => {
-                if (data.status === 'success') {
-                    showMessage('Attendance updated successfully!');
-                    const newStatus = formData.get('status');
-                    const statusCell = row.querySelector('td:nth-child(2)');
-                    const statusBadge = statusCell.querySelector('.status-badge');
-                    
-                    if (statusBadge) {
-                        statusBadge.textContent = newStatus;
-                        statusBadge.className = 'status-badge status-' + newStatus.toLowerCase();
-                    }
-                } else {
-                    showMessage('Error: ' + data.message, 'error');
-                }
-            })
-            .catch(error => {
-                showMessage('An unexpected error occurred.', 'error');
-                console.error('Error:', error);
-            });
-        });
-    });
-
-});
-</script>
+<?php require_once 'includes/footer.php'; ?>
