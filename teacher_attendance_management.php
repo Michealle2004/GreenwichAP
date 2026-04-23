@@ -4,6 +4,7 @@ require_once 'includes/db_connect.php';
 
 $conn = connectToDatabase();
 $schedule_id = $_GET['schedule_id'] ?? null;
+$session_date = $_GET['session_date'] ?? date('Y-m-d');
 $students = [];
 $class_info = null;
 
@@ -18,12 +19,13 @@ $sql_class = 'SELECT c.course_name, s.day_of_week, s.term, s.year
 $res_class = pg_query_params($conn, $sql_class, [$schedule_id]);
 $class_info = pg_fetch_assoc($res_class);
 
-$sql_students = 'SELECT e.enrollment_id, u.user_id, u.full_name 
+$sql_students = 'SELECT e.enrollment_id, u.user_id, u.full_name, a.status AS attendance_status
                  FROM enrollments e
                  JOIN users u ON e.student_id = u.id
+                 LEFT JOIN attendance a ON a.enrollment_id = e.enrollment_id AND a.session_date = $2
                  WHERE e.schedule_id = $1 AND e.status = \'approved\'
                  ORDER BY u.user_id ASC';
-$res_students = pg_query_params($conn, $sql_students, [$schedule_id]);
+$res_students = pg_query_params($conn, $sql_students, [$schedule_id, $session_date]);
 $students = pg_fetch_all($res_students) ?: [];
 
 pg_close($conn);
@@ -60,7 +62,7 @@ pg_close($conn);
             
             <div style="margin-bottom: 30px; background: #fffaf0; padding: 20px; border-radius: 10px; border: 1px solid #feebc8;">
                 <label style="font-weight: bold; color: #c05621; display: block; margin-bottom: 8px;">Select Session Date:</label>
-                <input type="date" name="session_date" value="<?= date('Y-m-d') ?>" required 
+                  <input type="date" name="session_date" value="<?= htmlspecialchars($session_date) ?>" required 
                        style="padding: 10px; border-radius: 8px; border: 1px solid #cbd5e0; width: 250px; font-size: 1em;">
             </div>
 
@@ -83,10 +85,10 @@ pg_close($conn);
                                 <td>
                                     <div class="radio-group" style="justify-content: center;">
                                         <label class="radio-item present-label">
-                                            <input type="radio" name="attendance[<?= $s['enrollment_id'] ?>]" value="present" checked> Present
+                                            <input type="radio" name="attendance[<?= $s['enrollment_id'] ?>]" value="present" <?= (($s['attendance_status'] ?? 'present') === 'present') ? 'checked' : '' ?>> Present
                                         </label>
                                         <label class="radio-item absent-label">
-                                            <input type="radio" name="attendance[<?= $s['enrollment_id'] ?>]" value="absent"> Absent
+                                            <input type="radio" name="attendance[<?= $s['enrollment_id'] ?>]" value="absent" <?= (($s['attendance_status'] ?? '') === 'absent') ? 'checked' : '' ?>> Absent
                                         </label>
                                     </div>
                                 </td>

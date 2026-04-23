@@ -2,6 +2,12 @@
 session_start();
 require_once '../includes/db_connect.php';
 
+$role = $_SESSION['role'] ?? '';
+if (!in_array($role, ['teacher', 'admin'], true)) {
+    header("Location: ../weekly_timetable.php?status=error&message=Unauthorized access.");
+    exit();
+}
+
 if ($_SERVER["REQUEST_METHOD"] == "POST") {
     $schedule_id = $_POST['schedule_id'] ?? null;
     $session_date = $_POST['session_date'] ?? null;

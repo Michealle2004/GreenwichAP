@@ -7,7 +7,13 @@ $timetable = [];
 $role = $_SESSION['role'] ?? 'student';
 $user_id = $_SESSION['user_id'] ?? null;
 $user_code = $_SESSION['user_code'] ?? null;
-$today = date('Y-m-d'); 
+$days = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
+$week_dates = [];
+foreach ($days as $d) {
+    $week_dates[$d] = date('Y-m-d', strtotime($d . ' this week'));
+}
+$week_start = $week_dates['Monday'];
+$week_end = $week_dates['Sunday'];
 
 $search_user_id = $_GET['student_user_id'] ?? ''; 
 $user_id_to_view = null; 
@@ -22,61 +28,135 @@ if ($role === 'admin' && !empty($search_user_id)) {
 }
 
 $result = null;
+$schedule_rows = [];
+$attendance_map = [];
 
 if ($role === 'teacher') {
     $sql = 'SELECT s.schedule_id, s.day_of_week, 
                    to_char(s.start_time, \'HH24:MI\') as start_hm, 
                    to_char(s.end_time, \'HH24:MI\') as end_hm, 
-                   s.room, c.course_id, c.course_name,
-                   (SELECT COUNT(*) FROM attendance a 
-                    WHERE a.enrollment_id IN (SELECT enrollment_id FROM enrollments WHERE schedule_id = s.schedule_id) 
-                    AND a.session_date = $2) as is_submitted
+                   s.room, c.course_id, c.course_name
             FROM schedules s
             JOIN courses c ON s.course_id = c.course_id
             WHERE s.teacher_id = $1';
-    $result = pg_query_params($conn, $sql, [$user_code, $today]);
+    $result = pg_query_params($conn, $sql, [$user_code]);
 
 } elseif ($role === 'admin') {
     if (!empty($search_user_id) && $user_id_to_view) {
         $sql = 'SELECT s.schedule_id, s.day_of_week, 
                        to_char(s.start_time, \'HH24:MI\') as start_hm, 
                        to_char(s.end_time, \'HH24:MI\') as end_hm, 
-                       s.room, c.course_id, c.course_name, t.full_name AS teacher_name,
-                       (SELECT a.status FROM attendance a 
-                        JOIN enrollments e2 ON a.enrollment_id = e2.enrollment_id 
-                        WHERE e2.student_id = $1 AND e2.schedule_id = s.schedule_id AND a.session_date = $2 
-                        LIMIT 1) as attendance_status
+                       s.room, c.course_id, c.course_name, t.full_name AS teacher_name
                 FROM enrollments e
                 JOIN schedules s ON e.schedule_id = s.schedule_id
                 JOIN courses c ON s.course_id = c.course_id
                 JOIN users t ON s.teacher_id = t.user_id
                 WHERE e.student_id = $1 AND e.status = \'approved\'';
-        $result = pg_query_params($conn, $sql, [$user_id_to_view, $today]);
+        $result = pg_query_params($conn, $sql, [$user_id_to_view]);
     } 
 } else {
     $sql = 'SELECT s.schedule_id, s.day_of_week, 
                    to_char(s.start_time, \'HH24:MI\') as start_hm, 
                    to_char(s.end_time, \'HH24:MI\') as end_hm, 
-                   s.room, c.course_id, c.course_name, t.full_name AS teacher_name,
-                   (SELECT a.status FROM attendance a 
-                    JOIN enrollments e2 ON a.enrollment_id = e2.enrollment_id 
-                    WHERE e2.student_id = $1 AND e2.schedule_id = s.schedule_id AND a.session_date = $2 
-                    LIMIT 1) as attendance_status
+                   s.room, c.course_id, c.course_name, t.full_name AS teacher_name
             FROM enrollments e
             JOIN schedules s ON e.schedule_id = s.schedule_id
             JOIN courses c ON s.course_id = c.course_id
             JOIN users t ON s.teacher_id = t.user_id
             WHERE e.student_id = $1 AND e.status = \'approved\'';
-    $result = pg_query_params($conn, $sql, [$user_id, $today]);
+    $result = pg_query_params($conn, $sql, [$user_id]);
 }
 
 if ($result) {
     while ($row = pg_fetch_assoc($result)) {
-        $timetable[$row['day_of_week']][$row['start_hm']][] = $row;
+        $schedule_rows[] = $row;
     }
 }
 
-$days = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
+if (!empty($schedule_rows)) {
+    $schedule_ids = array_values(array_unique(array_map(static function ($r) {
+        return (int)$r['schedule_id'];
+    }, $schedule_rows)));
+
+    if (!empty($schedule_ids)) {
+        $placeholders = [];
+        $params = [];
+        foreach ($schedule_ids as $i => $sid) {
+            $placeholders[] = '$' . ($i + 1);
+            $params[] = $sid;
+        }
+
+        if ($role === 'teacher') {
+            $params[] = $week_start;
+            $params[] = $week_end;
+            $week_start_idx = count($params) - 1;
+            $week_end_idx = count($params);
+
+            $sql_att = 'SELECT e.schedule_id, a.session_date::text AS session_date, COUNT(*) AS submitted_count
+                        FROM attendance a
+                        JOIN enrollments e ON a.enrollment_id = e.enrollment_id
+                        WHERE e.schedule_id IN (' . implode(',', $placeholders) . ')
+                                                    AND a.status IN (\'present\', \'absent\')
+                          AND a.session_date BETWEEN $' . $week_start_idx . ' AND $' . $week_end_idx . '
+                        GROUP BY e.schedule_id, a.session_date';
+
+            $att_result = pg_query_params($conn, $sql_att, $params);
+            if ($att_result) {
+                while ($att = pg_fetch_assoc($att_result)) {
+                    $key = $att['schedule_id'] . '|' . $att['session_date'];
+                    $attendance_map[$key] = (int)$att['submitted_count'];
+                }
+            }
+        } else {
+            $student_id_for_status = ($role === 'admin') ? $user_id_to_view : $user_id;
+            if ($student_id_for_status) {
+                $params[] = $student_id_for_status;
+                $student_idx = count($params);
+                $params[] = $week_start;
+                $params[] = $week_end;
+                $week_start_idx = count($params) - 1;
+                $week_end_idx = count($params);
+
+                $sql_att = 'SELECT e.schedule_id, a.session_date::text AS session_date, a.status
+                            FROM attendance a
+                            JOIN enrollments e ON a.enrollment_id = e.enrollment_id
+                            WHERE e.schedule_id IN (' . implode(',', $placeholders) . ')
+                              AND e.student_id = $' . $student_idx . '
+                              AND a.session_date BETWEEN $' . $week_start_idx . ' AND $' . $week_end_idx . '
+                            ORDER BY a.attendance_id DESC';
+
+                $att_result = pg_query_params($conn, $sql_att, $params);
+                if ($att_result) {
+                    while ($att = pg_fetch_assoc($att_result)) {
+                        $key = $att['schedule_id'] . '|' . $att['session_date'];
+                        if (!isset($attendance_map[$key])) {
+                            $attendance_map[$key] = $att['status'];
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    foreach ($schedule_rows as $row) {
+        $day_name = $row['day_of_week'];
+        if (!isset($week_dates[$day_name])) {
+            continue;
+        }
+
+        $class_date = $week_dates[$day_name];
+        $att_key = $row['schedule_id'] . '|' . $class_date;
+
+        if ($role === 'teacher') {
+            $row['is_submitted'] = $attendance_map[$att_key] ?? 0;
+        } else {
+            $row['attendance_status'] = $attendance_map[$att_key] ?? null;
+        }
+
+        $timetable[$day_name][$row['start_hm']][] = $row;
+    }
+}
+
 $slots = [
     ['n' => '1', 's' => '08:00', 'e' => '09:30'],
     ['n' => '2', 's' => '09:30', 'e' => '11:00'],
@@ -169,23 +249,23 @@ pg_close($conn);
 
                                                 <?php if ($role === 'teacher'): ?>
                                                     <?php if ($class['is_submitted'] > 0): ?>
-                                                        <div class="att-status status-attended">✅ Attended <br> <a href="teacher_attendance_management.php?schedule_id=<?= $class['schedule_id'] ?>" style="color:#3182ce; font-size:0.9em; font-weight:bold;">(Retake)</a></div>
+                                                        <div class="att-status status-attended">✅ Attended <br> <a href="teacher_attendance_management.php?schedule_id=<?= $class['schedule_id'] ?>&session_date=<?= urlencode($week_dates[$day]) ?>" style="color:#3182ce; font-size:0.9em; font-weight:bold;">(Retake)</a></div>
                                                     <?php else: ?>
                                                         <div class="att-status status-notyet">⌛ Not Yet</div>
-                                                        <a href="teacher_attendance_management.php?schedule_id=<?= $class['schedule_id'] ?>" class="btn-take-att">Take Attendance</a>
+                                                        <a href="teacher_attendance_management.php?schedule_id=<?= $class['schedule_id'] ?>&session_date=<?= urlencode($week_dates[$day]) ?>" class="btn-take-att">Take Attendance</a>
                                                     <?php endif; ?>
                                                 <?php else: ?>
                                                     <?php if ($class['attendance_status']): ?>
-                                                        <div class="att-status <?= $class['attendance_status'] === 'present' ? 'status-attended' : 'status-absent' ?>">
-                                                            <?= $class['attendance_status'] === 'present' ? '✅ Attended' : '❌ Absent' ?>
+                                                        <div class="att-status <?= $class['attendance_status'] === 'present' ? 'status-attended' : ($class['attendance_status'] === 'absent' ? 'status-absent' : 'status-notyet') ?>">
+                                                            <?= $class['attendance_status'] === 'present' ? '✅ Attended' : ($class['attendance_status'] === 'absent' ? '❌ Absent' : '⌛ Not Yet') ?>
                                                         </div>
                                                         <?php if ($role === 'admin'): ?>
-                                                             <a href="teacher_attendance_management.php?schedule_id=<?= $class['schedule_id'] ?>" style="font-size: 0.75em; color: #3182ce;">Edit Attendance</a>
+                                                             <a href="teacher_attendance_management.php?schedule_id=<?= $class['schedule_id'] ?>&session_date=<?= urlencode($week_dates[$day]) ?>" style="font-size: 0.75em; color: #3182ce;">Edit Attendance</a>
                                                         <?php endif; ?>
                                                     <?php else: ?>
                                                         <div class="att-status status-notyet">⌛ Not Yet</div>
                                                         <?php if ($role === 'admin'): ?>
-                                                             <a href="teacher_attendance_management.php?schedule_id=<?= $class['schedule_id'] ?>" style="font-size: 0.75em; color: #3182ce;">Mark Attendance</a>
+                                                             <a href="teacher_attendance_management.php?schedule_id=<?= $class['schedule_id'] ?>&session_date=<?= urlencode($week_dates[$day]) ?>" style="font-size: 0.75em; color: #3182ce;">Mark Attendance</a>
                                                         <?php endif; ?>
                                                     <?php endif; ?>
                                                 <?php endif; ?>
