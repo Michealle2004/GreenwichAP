@@ -5,6 +5,8 @@ require_once 'includes/db_connect.php';
 $conn = connectToDatabase();
 $attendance_by_course = [];
 $search_id = '';
+$flash_status = $_GET['status'] ?? '';
+$flash_message = $_GET['message'] ?? '';
 $role = $_SESSION['role'] ?? '';
 $user_db_id = $_SESSION['user_id']; // ID số của user đang đăng nhập
 $is_admin = ($role === 'admin');
@@ -80,6 +82,12 @@ pg_close($conn);
 
 <div class="page-container">
     <h1>Attendance Report</h1>
+
+    <?php if (!empty($flash_message)): ?>
+        <div style="margin-bottom: 20px; padding: 10px 14px; border-radius: 6px; color: <?= $flash_status === 'success' ? '#155724' : '#721c24' ?>; background: <?= $flash_status === 'success' ? '#d4edda' : '#f8d7da' ?>; border: 1px solid <?= $flash_status === 'success' ? '#c3e6cb' : '#f5c6cb' ?>;">
+            <?= htmlspecialchars($flash_message) ?>
+        </div>
+    <?php endif; ?>
     
     <?php if ($is_admin): ?>
         <h2>Admin Tools</h2>
@@ -130,6 +138,7 @@ pg_close($conn);
                                     <?php if ($is_admin): ?>
                                         <form class="update-attendance-form" action="admin/update_attendance_process.php" method="POST">
                                             <input type="hidden" name="attendance_id" value="<?php echo htmlspecialchars($record['attendance_id']); ?>">
+                                            <input type="hidden" name="student_user_id" value="<?php echo htmlspecialchars($search_id); ?>">
                                             <select name="status">
                                                 <option value="present" <?php echo $record['status'] == 'present' ? 'selected' : ''; ?>>Present</option>
                                                 <option value="absent" <?php echo $record['status'] == 'absent' ? 'selected' : ''; ?>>Absent</option>
