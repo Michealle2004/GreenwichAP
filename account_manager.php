@@ -153,6 +153,15 @@ const formTitle = document.getElementById('form-title');
 const cancelBtn = document.getElementById('cancel-btn');
 const parentCheckbox = document.getElementById('create_parent');
 const parentNameGroup = document.getElementById('parent-name-group');
+const statusMessage = document.getElementById('status-message');
+
+function showStatusMessage(message, type = 'success') {
+    statusMessage.textContent = message;
+    statusMessage.style.display = 'block';
+    statusMessage.style.backgroundColor = type === 'success' ? '#d4edda' : '#f8d7da';
+    statusMessage.style.color = type === 'success' ? '#155724' : '#721c24';
+    statusMessage.style.border = `1px solid ${type === 'success' ? '#c3e6cb' : '#f5c6cb'}`;
+}
 
 function toggleFormLogic() {
     const role = document.getElementById('modal-role').value;
@@ -206,22 +215,60 @@ function deleteUser(id) {
         fd.append('action', 'delete');
         fd.append('db_id', id);
         fetch('/GreenwichAP/admin/manage_user_process.php', { method: 'POST', body: fd })
-        .then(res => res.json()).then(data => {
-            if(data.status === 'success') location.reload();
-            else alert(data.message);
+        .then(async res => {
+            const raw = await res.text();
+            let data;
+
+            try {
+                data = JSON.parse(raw);
+            } catch (parseError) {
+                throw new Error(raw || 'Unexpected server response.');
+            }
+
+            if (!res.ok || data.status !== 'success') {
+                throw new Error(data.message || 'Delete failed.');
+            }
+
+            showStatusMessage('Account deleted successfully. Reloading page...', 'success');
+            setTimeout(() => location.reload(), 800);
+        })
+        .catch(err => {
+            showStatusMessage(err.message || 'Server error.', 'error');
         });
     }
 }
 
 userForm.onsubmit = function(e) {
     e.preventDefault();
-    fetch(this.getAttribute('action'), { method: 'POST', body: new FormData(this) })
-    .then(res => res.json())
-    .then(data => {
-        if(data.status === 'success') location.reload();
-        else alert("Error: " + data.message);
+    const submitBtn = this.querySelector('button[type="submit"]');
+    const formData = new FormData(this);
+
+    if (submitBtn) submitBtn.disabled = true;
+
+    fetch(this.getAttribute('action'), { method: 'POST', body: formData })
+    .then(async res => {
+        const raw = await res.text();
+        let data;
+
+        try {
+            data = JSON.parse(raw);
+        } catch (parseError) {
+            throw new Error(raw || 'Unexpected server response.');
+        }
+
+        if (!res.ok || data.status !== 'success') {
+            throw new Error(data.message || 'Request failed.');
+        }
+
+        showStatusMessage('Account saved successfully. Reloading page...', 'success');
+        setTimeout(() => location.reload(), 800);
     })
-    .catch(err => alert("Server error."));
+    .catch(err => {
+        showStatusMessage(err.message || 'Server error.', 'error');
+    })
+    .finally(() => {
+        if (submitBtn) submitBtn.disabled = false;
+    });
 };
 
 toggleFormLogic();

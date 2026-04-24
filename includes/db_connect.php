@@ -1,6 +1,8 @@
 <?php
 error_reporting(E_ALL);
-ini_set('display_errors', 1);
+ini_set('display_errors', 0);
+
+// Kết nối với thông tin cơ sở dữ liệu PostgreSQL
 
 function connectToDatabase() {
     $host = 'localhost';
@@ -17,4 +19,3 @@ function connectToDatabase() {
 
     return $conn;
 }
-?>

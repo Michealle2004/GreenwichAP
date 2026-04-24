@@ -1,10 +1,14 @@
 <?php
 session_start();
 
+// Nếu người dùng đã đăng nhập, chuyển hướng đến trang index.php
+
 if (isset($_SESSION['user_id'])) {
     header("Location: index.php");
     exit();
 }
+
+
 ?>
 <!DOCTYPE html>
 <html lang="vi">
@@ -20,6 +24,7 @@ if (isset($_SESSION['user_id'])) {
             <img src="https://greenwich.edu.vn/wp-content/uploads/2024/06/2022-Greenwich-Eng.webp" alt="Greenwich Logo" class="logo">
             <h2>Greenwich Academic Portal</h2>
             
+            <!-- Hiển thị thông báo lỗi nếu có -->
             <?php 
                 if (isset($_GET['error'])) {
                     echo '<p class="error-message">' . htmlspecialchars($_GET['error']) . '</p>';
@@ -33,6 +38,7 @@ if (isset($_SESSION['user_id'])) {
                     <option value="hcm">Ho Chi Minh</option>
                     <option value="hanoi">Ha Noi</option>
                     <option value="cantho">Can Tho</option>
+
                 </select>
             </div>
             <div class="form-group">
