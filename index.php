@@ -6,6 +6,8 @@ $conn = connectToDatabase();
 $role = $_SESSION['role'] ?? 'student';
 $full_name = $_SESSION['full_name'] ?? 'User';
 
+// Thống kê nhanh cho dashboard
+
 $res_std = pg_query($conn, "SELECT COUNT(*) FROM users WHERE role = 'student'");
 $total_students = pg_fetch_result($res_std, 0, 0);
 
@@ -14,6 +16,9 @@ $total_courses = pg_fetch_result($res_crs, 0, 0);
 
 $res_fb = pg_query($conn, "SELECT COUNT(*) FROM teacher_feedback WHERE status = 'Pending'");
 $pending_feedback = pg_fetch_result($res_fb, 0, 0);
+
+// Lấy 5 thông báo mới nhất phù hợp với vai trò người dùng
+
 
 if ($role === 'admin') {
     $sql_news = "SELECT * FROM announcements ORDER BY created_at DESC LIMIT 5";
@@ -190,6 +195,8 @@ pg_close($conn);
             <div class="content-body">
                 <p style="color: #666; font-size: 0.85em; margin-bottom: 15px;">Lối tắt đến các tính năng dành cho <strong><?= strtoupper($role) ?></strong>:</p>
                 <div class="action-grid">
+
+                <!-- Administrative Actions -->
                     <?php if ($role === 'admin'): ?>
                         <a href="weekly_timetable.php" class="quick-link-btn">View Timetable</a>
                         <a href="exam_schedule.php" class="quick-link-btn">Exam Deadline</a>
@@ -197,11 +204,15 @@ pg_close($conn);
                         <a href="mark_report.php" class="quick-link-btn">View Mark Reports</a>
                         <a href="major_create.php" class="quick-link-btn">Major Create</a>
                         <a href="account_manager.php" class="quick-link-btn">Account Manager</a>
+
+                <!-- Teacher Actions -->
                     <?php elseif ($role === 'teacher'): ?>
                         <a href="weekly_timetable.php" class="quick-link-btn">View Timetable</a>
                         <a href="exam_schedule.php" class="quick-link-btn">Exam Deadline</a>
                         <a href="teacher_feedback.php" class="quick-link-btn">Teacher Support</a>
                         <a href="mark_report.php" class="quick-link-btn">View Mark Reports</a>
+
+                <!-- Student Actions -->
                     <?php else: // Student ?>
                         <a href="weekly_timetable.php" class="quick-link-btn">View Timetable</a>
                         <a href="exam_schedule.php" class="quick-link-btn">Exam Deadline</a>
@@ -215,10 +226,13 @@ pg_close($conn);
         <div class="content-box">
             <div class="content-header">
                 <span><i class="fas fa-bullhorn" style="color:#e53e3e;"></i> Events & Announcements</span>
+                <!-- Action buttons for admins -->
                 <?php if ($role === 'admin'): ?>
                     <a href="admin/create_announcement.php" title="Tạo thông báo mới" style="color: var(--primary-blue);">
                         <i class="fas fa-plus-circle"></i>
                     </a>
+
+                <!-- Action buttons for non-admins -->
                 <?php else: ?>
                     <i class="fas fa-ellipsis-h" style="color: #cbd5e0;"></i>
                 <?php endif; ?>
@@ -232,6 +246,7 @@ pg_close($conn);
                         if ($news['target_role'] === 'student') $dot_color = '#e53e3e'; 
                         if ($news['target_role'] === 'teacher') $dot_color = '#38a169'; 
                     ?>
+                    <!-- News Item -->
                         <div class="news-item" id="ann-item-<?= $news['id'] ?>">
                             <div class="news-dot" style="background: <?= $dot_color ?>;"></div>
                             <div style="flex-grow: 1;">
@@ -247,6 +262,8 @@ pg_close($conn);
                                     <?= date('d/m/Y', strtotime($news['created_at'])) ?>
                                 </span>
                             </div>
+
+                            <!-- Administrative Actions -->
                             
                             <?php if ($role === 'admin'): ?>
                                 <div class="news-admin-actions">

@@ -11,6 +11,7 @@ $conn = connectToDatabase();
 $campuses = pg_fetch_all(pg_query($conn, "SELECT * FROM campuses ORDER BY campus_name")) ?: [];
 $majors = pg_fetch_all(pg_query($conn, "SELECT * FROM majors ORDER BY major_name")) ?: [];
 
+// Xử lý tìm kiếm người dùng nếu có tham số search
 $search = $_GET['search'] ?? '';
 $sql_users = "SELECT u.*, c.campus_name, m.major_name 
               FROM users u 

@@ -1,4 +1,3 @@
-<!-- Check session -->
 
 <?php
 
@@ -6,21 +5,18 @@ if (session_status() == PHP_SESSION_NONE) {
     session_start();
 }
 
-// Kết nối database và lấy thông tin người dùng từ session
 require_once __DIR__ . '/db_connect.php';
 $conn = connectToDatabase();
 
 $is_student_staff = isset($_SESSION['user_id']);
 $is_parent = isset($_SESSION['parent_id']);
 
-// Nếu không phải student/staff và không phải parent thì chuyển hướng về login
 
 if (!$is_student_staff && !$is_parent) {
     header("Location: login.php");
     exit();
 }
 
-// Xác định thông tin người dùng dựa trên vai trò (parent hoặc student/staff)
 
 if ($is_parent) {
     $user_code = $_SESSION['student_user_code'] ?? 'N/A';
@@ -36,7 +32,6 @@ if ($is_parent) {
     
     $gre_wallet_balance = 0;
 
-// Truy vấn số dư GreWallet nếu người dùng không phải là parent hoặc teacher
     if ($user_id_for_query) {
         $res_bal = @pg_query_params($conn, "SELECT wallet_balance FROM users WHERE id = $1", [$user_id_for_query]);
         if ($res_bal && pg_num_rows($res_bal) > 0) {
@@ -67,7 +62,6 @@ if ($is_parent) {
             <nav class="main-nav">
                 <ul>
 
-                <!-- Chia Thanh Header theo vai trò -->
                     <?php if ($is_parent):  ?>
                         <li><a href="/GreenwichAP/parent_dashboard.php">Dashboard</a></li>
 
@@ -177,7 +171,6 @@ if ($is_parent) {
                         <hr>
                         
 
-                        <!-- Hiển thị GreWallet nếu không phải là parent hoặc teacher -->
                         <?php if (!$is_parent && $role !== 'teacher'): ?>
                             <a href="/GreenwichAP/grewallet.php" class="grewallet-link">
                                 <strong>GreWallet</strong>
